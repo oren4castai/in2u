@@ -39,7 +39,7 @@ public sealed class AdminVenuesController : ControllerBase
     [HttpPost("{venueGuid:guid}/close")]
     public async Task<ActionResult<CloseVenueResponse>> Close(Guid venueGuid, CancellationToken ct)
     {
-        var dto = await _venues.CloseAsync(venueGuid, ct);
+        var dto = await _venues.CloseAsync(venueGuid, false, ct);
         return Ok(dto);
     }
 }

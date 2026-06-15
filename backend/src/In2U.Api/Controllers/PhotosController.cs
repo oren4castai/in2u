@@ -51,7 +51,7 @@ public sealed class PhotosController : ControllerBase
     }
 
     [HttpGet("{userGuid:guid}")]
-    [ResponseCache(Duration = 604800, Location = ResponseCacheLocation.Any)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Get(Guid userGuid, CancellationToken ct)
     {
         var user = await _db.Users
@@ -66,12 +66,12 @@ public sealed class PhotosController : ControllerBase
             .FirstOrDefaultAsync(ct);
         if (photo is null) return NotFound();
 
-        Response.Headers.CacheControl = "public, max-age=604800";
+        Response.Headers.CacheControl = "no-store";
         return File(photo.Data, photo.ContentType);
     }
 
     [HttpGet("venue/{venueGuid:guid}")]
-    [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Any)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> GetVenuePhoto(Guid venueGuid, CancellationToken ct)
     {
         var venue = await _db.Venues
@@ -96,7 +96,7 @@ public sealed class PhotosController : ControllerBase
             return NotFound();
         }
 
-        Response.Headers.CacheControl = "public, max-age=3600";
+        Response.Headers.CacheControl = "no-store";
         return File(photo.Data, photo.ContentType);
     }
 

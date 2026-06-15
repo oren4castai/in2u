@@ -233,6 +233,10 @@ public sealed class VenueService : IVenueService
         if (venue.Status != VenueStatus.Active)
             throw new InvalidOperationException("Venue is not active.");
 
+
+
+ 
+
         var now = DateTime.UtcNow;
         if (venue.Type == VenueType.Event)
         {
@@ -382,7 +386,7 @@ public sealed class VenueService : IVenueService
         return new CreatedVenueDto(venue.VenueGuid, venue.Status.ToString());
     }
 
-    public async Task<CloseVenueResponse> CloseAsync(Guid venueGuid, CancellationToken ct = default)
+    public async Task<CloseVenueResponse> CloseAsync(Guid venueGuid, bool hardDelete = false, CancellationToken ct = default)
     {
         var venue = await _db.Venues.FirstOrDefaultAsync(v => v.VenueGuid == venueGuid, ct)
                     ?? throw new InvalidOperationException("Venue not found.");
@@ -432,45 +436,42 @@ public sealed class VenueService : IVenueService
         // ── Post-close: log and hard/soft delete ──────────────────────────
         if (venue.OwnerId.HasValue)
         {
-            // Log event stats to VenueOwnerEventLog
-            var stats = await _db.VenueStats.FirstOrDefaultAsync(s => s.VenueId == venue.Id, ct);
-            var creatorName = await _db.Users
-                .Where(u => u.Id == venue.CreateUserId)
-                .Select(u => u.DisplayName)
-                .FirstOrDefaultAsync(ct) ?? string.Empty;
-
-            _db.VenueOwnerEventLogs.Add(new VenueOwnerEventLog
-            {
-                VenueOwnerId = venue.OwnerId.Value,
-                VenueId = venue.Id,
-                Name = venue.Name,
-                Description = venue.Description,
-                StartsAt = venue.StartsAt,
-                DurationHours = venue.DurationHours,
-                EventType = venue.EventType.ToString(),
-                JoinedCount = stats?.JoinedCount ?? 0,
-                MatchesCount = stats?.MatchesCount ?? 0,
-                ViewsCount = stats?.ViewsCount ?? 0,
-                CreateUserName = creatorName,
-                ClosedAt = DateTime.UtcNow,
-            });
-
-            // Always delete VenueStats for OwnerId events
+            // Always delete VenueStats and ambient assignments
             await _db.VenueStats.Where(s => s.VenueId == venue.Id).ExecuteDeleteAsync(ct);
-            // Always clean up ambient assignments for the closed event
             await _db.VenueAmbientAssignments.Where(a => a.VenueId == venue.Id).ExecuteDeleteAsync(ct);
 
             // Determine soft vs hard close:
             // Soft = owner's own event (VenueOwner.CreateUserId == venue.CreateUserId) → keep Venue + VenuePhoto
             // Hard = event created by someone else → delete Venue + VenuePhoto
             var owner = await _db.VenueOwners.FirstOrDefaultAsync(o => o.Id == venue.OwnerId.Value, ct);
-            bool isSoftClose = owner is not null && owner.CreateUserId == venue.CreateUserId;
+            bool isSoftClose = !hardDelete && owner is not null && owner.CreateUserId == venue.CreateUserId;
 
             if (!isSoftClose)
             {
-                // Hard close: delete everything including venue and photos.
-                // Do NOT mutate venue.Status — the row is about to be deleted, and
-                // a tracked Status change would race with ExecuteDeleteAsync.
+                // Hard close: log stats, then delete everything including venue and photos.
+                var stats = await _db.VenueStats.FirstOrDefaultAsync(s => s.VenueId == venue.Id, ct);
+                var creatorName = await _db.Users
+                    .Where(u => u.Id == venue.CreateUserId)
+                    .Select(u => u.DisplayName)
+                    .FirstOrDefaultAsync(ct) ?? string.Empty;
+
+                _db.VenueOwnerEventLogs.Add(new VenueOwnerEventLog
+                {
+                    VenueOwnerId = venue.OwnerId.Value,
+                    VenueId = venue.Id,
+                    Name = venue.Name,
+                    Description = venue.Description,
+                    StartsAt = venue.StartsAt,
+                    DurationHours = venue.DurationHours,
+                    EventType = venue.EventType.ToString(),
+                    JoinedCount = stats?.JoinedCount ?? 0,
+                    MatchesCount = stats?.MatchesCount ?? 0,
+                    ViewsCount = stats?.ViewsCount ?? 0,
+                    CreateUserName = creatorName,
+                    ClosedAt = DateTime.UtcNow,
+                });
+
+                // Do NOT mutate venue.Status — the row is about to be deleted.
                 await _db.VenueAmbientAssignments.Where(a => a.VenueId == venue.Id).ExecuteDeleteAsync(ct);
                 var matchIdsA = await _db.Matches
                     .Where(m => m.VenueId == venue.Id)
@@ -484,8 +485,8 @@ public sealed class VenueService : IVenueService
             }
             else
             {
-                // Soft close: venue + photo stay as template. Persist Status=Closed here
-                // (this is the only branch where the row survives).
+                // Soft close: venue + photo stay as template. Persist Status=Closed here.
+                // No log entry — the event is still alive and can be rescheduled.
                 venue.Status = VenueStatus.Closed;
                 var matchIdsS = await _db.Matches
                     .Where(m => m.VenueId == venue.Id)
@@ -619,6 +620,7 @@ public sealed class VenueService : IVenueService
                 v.DurationHours,
                 v.Status.ToString(),
                 v.HasPhoto,
+                v.HasPhoto ? $"/api/v1/photos/venue/{v.VenueGuid}" : null,
                 v.ShareCode))
             .ToListAsync(ct);
     }
@@ -649,6 +651,7 @@ public sealed class VenueService : IVenueService
             venue.DurationHours,
             venue.Status.ToString(),
             venue.HasPhoto,
+            venue.HasPhoto ? $"/api/v1/photos/venue/{venue.VenueGuid}" : null,
             venue.ShareCode);
     }
 

@@ -12,5 +12,6 @@ public sealed record MyEventDto(
     int? DurationHours,
     string Status,
     bool HasPhoto,
+    string? PhotoUrl,
     string ShareCode
 );

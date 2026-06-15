@@ -29,8 +29,14 @@ public interface IVenueOwnershipService
 
     Task<IReadOnlyList<MyClaimDto>> ListMyClaimsAsync(long requestUserId, CancellationToken ct = default);
 
-    Task<OwnerEventActionResult> SetEventPausedAsync(
-        long ownerUserId, Guid venueGuid, bool paused, CancellationToken ct = default);
+    Task<OwnerEventActionResult> CloseEventAsync(
+        long ownerUserId, Guid venueGuid, CancellationToken ct = default);
+
+    Task<OwnerEventActionResult> DeleteEventAsync(
+        long ownerUserId, Guid venueGuid, CancellationToken ct = default);
+
+    Task<OwnerEventActionResult> RescheduleEventAsync(
+        long ownerUserId, Guid venueGuid, DateTime startsAt, CancellationToken ct = default);
 
     Task<OwnerEventActionResult> VerifyGovernedEventAsync(
         long ownerUserId, Guid venueGuid, CancellationToken ct = default);

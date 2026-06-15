@@ -82,6 +82,8 @@ builder.Services
     {
         o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         o.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+        o.JsonSerializerOptions.Converters.Add(new In2U.Api.Common.UtcDateTimeConverter());
+        o.JsonSerializerOptions.Converters.Add(new In2U.Api.Common.UtcNullableDateTimeConverter());
     });
 
 builder.Services.AddResponseCaching();

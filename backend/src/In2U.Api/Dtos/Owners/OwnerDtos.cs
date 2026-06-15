@@ -23,6 +23,15 @@ public sealed record PendingClaimDto(
 
 public sealed record RejectClaimRequest(string? Note);
 
+public sealed record OwnerClosedEventDto(
+    Guid VenueGuid,
+    string Name,
+    DateTime? StartsAt,
+    int? DurationHours,
+    bool HasPhoto);
+
+public sealed record RescheduleEventRequest(DateTime StartsAt);
+
 public sealed record OwnerPastEventDto(
     long Id,
     string Name,
@@ -54,7 +63,8 @@ public sealed record OwnerActiveEventDto(
     int LiveCount,
     int JoinedCount,
     int MatchesCount,
-    long ViewsCount);
+    long ViewsCount,
+    bool HasPhoto);
 
 public sealed record OwnerVenueDetailDto(
     Guid OwnerGuid,
@@ -66,6 +76,7 @@ public sealed record OwnerVenueDetailDto(
     bool HasPhoto,
     OwnerAccumulatedTotalsDto Totals,
     IReadOnlyList<OwnerActiveEventDto> ActiveEvents,
+    IReadOnlyList<OwnerClosedEventDto> ClosedEvents,
     IReadOnlyList<OwnerPastEventDto> PastEvents);
 
 public sealed record SendVenueAnnouncementRequest(string Message);

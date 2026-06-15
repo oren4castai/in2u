@@ -61,13 +61,13 @@ public sealed class OwnerDashboardController : ControllerBase
         return detail is null ? NotFound() : Ok(detail);
     }
 
-    [HttpPost("events/{venueGuid:guid}/pause")]
-    public async Task<IActionResult> SetPaused(Guid venueGuid, [FromQuery] bool paused, CancellationToken ct)
+    [HttpPost("events/{venueGuid:guid}/close")]
+    public async Task<IActionResult> CloseEvent(Guid venueGuid, CancellationToken ct)
     {
         var userId = await ResolveUserIdAsync(ct);
         if (userId is null) return Unauthorized();
 
-        var result = await _ownership.SetEventPausedAsync(userId.Value, venueGuid, paused, ct);
+        var result = await _ownership.CloseEventAsync(userId.Value, venueGuid, ct);
         return MapEventAction(result);
     }
 
@@ -77,11 +77,24 @@ public sealed class OwnerDashboardController : ControllerBase
         var userId = await ResolveUserIdAsync(ct);
         if (userId is null) return Unauthorized();
 
-        var verify = await _ownership.VerifyGovernedEventAsync(userId.Value, venueGuid, ct);
-        if (verify != OwnerEventActionResult.Ok) return MapEventAction(verify);
+        var result = await _ownership.DeleteEventAsync(userId.Value, venueGuid, ct);
+        return MapEventAction(result);
+    }
 
-        await _venues.CloseAsync(venueGuid, ct);
-        return NoContent();
+    [HttpPatch("events/{venueGuid:guid}/start-at")]
+    public async Task<IActionResult> RescheduleEvent(
+        Guid venueGuid,
+        [FromBody] RescheduleEventRequest req,
+        CancellationToken ct)
+    {
+        var userId = await ResolveUserIdAsync(ct);
+        if (userId is null) return Unauthorized();
+
+        if (req.StartsAt.ToUniversalTime() <= DateTime.UtcNow)
+            return BadRequest(new { message = "Start date must be in the future." });
+
+        var result = await _ownership.RescheduleEventAsync(userId.Value, venueGuid, req.StartsAt, ct);
+        return MapEventAction(result);
     }
 
     [HttpPost("events/{venueGuid:guid}/announcement")]

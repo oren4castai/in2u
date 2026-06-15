@@ -155,6 +155,43 @@ public sealed class EventsController : ControllerBase
         return Ok(preview);
     }
 
+    [HttpGet("{venueGuid:guid}")]
+    public async Task<ActionResult<MyEventDto>> GetEvent(Guid venueGuid, CancellationToken ct)
+    {
+        var venue = await _db.Venues
+            .Where(v => v.VenueGuid == venueGuid)
+            .FirstOrDefaultAsync(ct);
+        if (venue is null) return NotFound();
+
+        var callerGuid = User.GetUserGuid();
+        if (callerGuid is null) return Unauthorized();
+
+        var userId = await _db.Users
+            .Where(u => u.UserGuid == callerGuid.Value && !u.IsDeleted)
+            .Select(u => (long?)u.Id)
+            .FirstOrDefaultAsync(ct);
+        if (userId is null) return Unauthorized();
+
+        // Only allow the event creator or admins to view edit details
+        var isAdmin = User.HasClaim("role", "Admin");
+        if (!isAdmin && venue.CreateUserId != userId.Value) return Forbid();
+
+        return Ok(new MyEventDto(
+            venue.VenueGuid,
+            venue.Name,
+            venue.Description,
+            venue.EventType.ToString(),
+            venue.Lat,
+            venue.Lng,
+            venue.RadiusM,
+            venue.StartsAt,
+            venue.DurationHours,
+            venue.Status.ToString(),
+            venue.HasPhoto,
+            venue.HasPhoto ? $"/api/v1/photos/venue/{venue.VenueGuid}" : null,
+            venue.ShareCode));
+    }
+
     [HttpPatch("{venueGuid:guid}")]
     public async Task<ActionResult<MyEventDto>> Patch(Guid venueGuid, [FromBody] PatchEventRequest req, CancellationToken ct)
     {
@@ -264,7 +301,7 @@ public sealed class EventsController : ControllerBase
         var isAdmin = User.HasClaim("role", "Admin");
         if (!isAdmin && venue.CreateUserId != userId.Value) return Forbid();
 
-        await _venues.CloseAsync(venueGuid, ct);
+        await _venues.CloseAsync(venueGuid, false, ct);
         return NoContent();
     }
 }

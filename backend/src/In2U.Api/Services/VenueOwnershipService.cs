@@ -198,6 +198,7 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
                 x.v.CreateUserId,
                 x.v.StartsAt,
                 x.v.DurationHours,
+                x.v.HasPhoto,
                 Joined = s != null ? s.JoinedCount : 0,
                 Matches = s != null ? s.MatchesCount : 0,
                 Views = s != null ? s.ViewsCount : 0,
@@ -222,7 +223,14 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
             liveByVenue.TryGetValue(x.Id, out var c) ? c : 0,
             x.Joined,
             x.Matches,
-            x.Views)).ToList();
+            x.Views,
+            x.HasPhoto)).ToList();
+
+        var closedEvents = await _db.Venues
+            .Where(v => v.OwnerId == owner.Id && v.Type == VenueType.Event && v.Status == VenueStatus.Closed)
+            .OrderByDescending(v => v.StartsAt)
+            .Select(v => new OwnerClosedEventDto(v.VenueGuid, v.Name, v.StartsAt, v.DurationHours, v.HasPhoto))
+            .ToListAsync(ct);
 
         var pastEvents = await _db.VenueOwnerEventLogs
             .Where(l => l.VenueOwnerId == owner.Id)
@@ -246,6 +254,7 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
             owner.HasPhoto,
             totals,
             activeEvents,
+            closedEvents,
             pastEvents);
     }
 
@@ -268,10 +277,22 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
             .FirstOrDefaultAsync(o => o.VenueOwnerGuid == ownerGuid && o.CreateUserId == ownerUserId, ct);
         if (owner is null) return false;
 
-        var deleted = await _db.VenueOwnerEventLogs
+        // Get VenueId before deleting the log entry
+        var logEntry = await _db.VenueOwnerEventLogs
+            .Where(l => l.Id == logId && l.VenueOwnerId == owner.Id)
+            .Select(l => new { l.VenueId })
+            .FirstOrDefaultAsync(ct);
+        if (logEntry is null) return false;
+
+        // Delete the log entry
+        await _db.VenueOwnerEventLogs
             .Where(l => l.Id == logId && l.VenueOwnerId == owner.Id)
             .ExecuteDeleteAsync(ct);
-        return deleted > 0;
+
+        // Delete the associated Venue row (VenueOwnerEventLog has all data copied, so Venue is no longer needed)
+        await _db.Venues.Where(v => v.Id == logEntry.VenueId).ExecuteDeleteAsync(ct);
+
+        return true;
     }
 
     public async Task<bool> DeleteVenueAsync(
@@ -287,7 +308,7 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
             .Select(v => v.VenueGuid)
             .ToListAsync(ct);
         foreach (var vg in activeVenueGuids)
-            await _venueService.CloseAsync(vg, ct);
+            await _venueService.CloseAsync(vg, true, ct);
 
         // Hard-delete all owner data
         await _db.VenueOwnerEventLogs.Where(l => l.VenueOwnerId == owner.Id).ExecuteDeleteAsync(ct);
@@ -297,13 +318,38 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
         return true;
     }
 
-    public async Task<OwnerEventActionResult> SetEventPausedAsync(
-        long ownerUserId, Guid venueGuid, bool paused, CancellationToken ct = default)
+    public async Task<OwnerEventActionResult> CloseEventAsync(
+        long ownerUserId, Guid venueGuid, CancellationToken ct = default)
     {
         var check = await ResolveGovernedEventAsync(ownerUserId, venueGuid, ct);
         if (check.Result != OwnerEventActionResult.Ok) return check.Result;
+        if (check.Venue!.Status != VenueStatus.Active) return OwnerEventActionResult.NotFound;
 
-        check.Venue!.IsPaused = paused;
+        await _venueService.CloseAsync(venueGuid, false, ct);
+        return OwnerEventActionResult.Ok;
+    }
+
+    public async Task<OwnerEventActionResult> DeleteEventAsync(
+        long ownerUserId, Guid venueGuid, CancellationToken ct = default)
+    {
+        var check = await ResolveGovernedEventAsync(ownerUserId, venueGuid, ct);
+        if (check.Result != OwnerEventActionResult.Ok) return check.Result;
+        
+        // Hard delete any event (active or closed)
+        await _venueService.CloseAsync(venueGuid, hardDelete: true, ct);
+        return OwnerEventActionResult.Ok;
+    }
+
+    public async Task<OwnerEventActionResult> RescheduleEventAsync(
+        long ownerUserId, Guid venueGuid, DateTime startsAt, CancellationToken ct = default)
+    {
+        var check = await ResolveGovernedEventAsync(ownerUserId, venueGuid, ct);
+        if (check.Result != OwnerEventActionResult.Ok) return check.Result;
+        if (check.Venue!.Status != VenueStatus.Closed) return OwnerEventActionResult.NotFound;
+
+        check.Venue.StartsAt = startsAt.ToUniversalTime();
+        check.Venue.Status = VenueStatus.Active;
+        check.Venue.IsPaused = false;
         await _db.SaveChangesAsync(ct);
         return OwnerEventActionResult.Ok;
     }

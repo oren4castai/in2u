@@ -73,6 +73,9 @@ public class AppDbContext : DbContext
             b.HasIndex(x => x.OwnerId);
             b.HasIndex(x => x.ShareCode).IsUnique();
             b.Property(x => x.ShareCode).IsRequired().HasMaxLength(8);
+            b.Property(x => x.StartsAt).HasConversion(
+                v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null,
+                v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
         });
 
         modelBuilder.Entity<VenueOwner>(b =>
