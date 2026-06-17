@@ -188,7 +188,13 @@ public sealed class VenueService : IVenueService
                 _db.VenueStats.Add(new VenueStats { VenueId = v.Id, ViewsCount = 1 });
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException) { }
+            catch (DbUpdateException ex)
+            {
+                _log.LogWarning(ex, "Failed to create venue stats for venue {VenueId}", v.Id);
+                var stats = _db.VenueStats.Local.LastOrDefault();
+                if (stats is not null)
+                    _db.Entry(stats).State = EntityState.Detached;
+            }
         }
 
         var bucket = await _presence.DensityBucketAsync(v.Id, ct);
@@ -312,8 +318,9 @@ public sealed class VenueService : IVenueService
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.JoinedCount, x => x.JoinedCount + 1), ct);
             
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
+            _log.LogWarning(ex, "Check-in conflict for user {UserId} venue {VenueId}", userId, venue.Id);
             _db.Entry(membership).State = EntityState.Detached;
             var current = await _db.VenueMemberships
                 .FirstOrDefaultAsync(m => m.UserId == userId, ct);

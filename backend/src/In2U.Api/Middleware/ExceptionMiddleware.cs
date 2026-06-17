@@ -75,9 +75,16 @@ public sealed class ExceptionMiddleware
 
         if (ctx.Response.HasStarted) return;
 
-        ctx.Response.Clear();
-        ctx.Response.StatusCode = status;
-        ctx.Response.ContentType = "application/problem+json";
-        await ctx.Response.WriteAsync(JsonSerializer.Serialize(problem));
+        try
+        {
+            ctx.Response.Clear();
+            ctx.Response.StatusCode = status;
+            ctx.Response.ContentType = "application/problem+json";
+            await ctx.Response.WriteAsync(JsonSerializer.Serialize(problem));
+        }
+        catch (Exception writeEx)
+        {
+            _logger.LogError(writeEx, "Failed to write error response");
+        }
     }
 }

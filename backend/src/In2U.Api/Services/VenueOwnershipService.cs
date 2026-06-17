@@ -76,9 +76,12 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
             var nearIds = new HashSet<long>();
             foreach (var (id, dist) in GeoMath.OwnersWithin(c.Lat, c.Lng, _owner.ConflictThresholdM, regions))
             {
-                var o = owners.First(x => x.Id == id);
-                conflicts.Add(new ClaimConflictDto(o.VenueOwnerGuid, o.Name, dist, "geo"));
-                nearIds.Add(id);
+                var o = owners.FirstOrDefault(x => x.Id == id);
+                if (o is not null)
+                {
+                    conflicts.Add(new ClaimConflictDto(o.VenueOwnerGuid, o.Name, dist, "geo"));
+                    nearIds.Add(id);
+                }
             }
 
             foreach (var o in owners.Where(o => !nearIds.Contains(o.Id)
@@ -373,7 +376,8 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
         var ownerId = GeoMath.NearestGoverningOwner(lat, lng, regions);
         if (ownerId is null) return new EventGovernanceResult(null, true, null);
 
-        var owner = owners.First(o => o.Id == ownerId.Value);
+        var owner = owners.FirstOrDefault(o => o.Id == ownerId.Value);
+        if (owner is null) return new EventGovernanceResult(null, true, null);
 
         if (eventType == VenueEventType.Private)
             return new EventGovernanceResult(ownerId, false, "Private events are not allowed in this venue.");
@@ -407,7 +411,8 @@ public sealed class VenueOwnershipService : IVenueOwnershipService
         var ownerId = GeoMath.NearestGoverningOwner(lat, lng, regions);
         if (ownerId is null) return new GovernancePreviewDto(false, null, true, null);
 
-        var owner = owners.First(o => o.Id == ownerId.Value);
+        var owner = owners.FirstOrDefault(o => o.Id == ownerId.Value);
+        if (owner is null) return new GovernancePreviewDto(false, null, true, null);
 
         // The owner's own events are unrestricted inside their venue.
         if (callerUserId == owner.CreateUserId)

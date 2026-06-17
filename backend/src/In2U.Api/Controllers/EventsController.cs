@@ -70,7 +70,7 @@ public sealed class EventsController : ControllerBase
         var isOwnerMode = governance.OwnerId.HasValue && ownedOwnerIds.Contains(governance.OwnerId.Value);
         if (isOwnerMode)
         {
-            var ownerId = governance.OwnerId!.Value;
+            var ownerId = governance.OwnerId.GetValueOrDefault();
             var ownerMaxActive = Math.Max(1, _owner.OwnerMaxActiveEvents);
             var ownerActiveCount = await _db.Venues.CountAsync(v =>
                 v.CreateUserId == userId.Value &&
